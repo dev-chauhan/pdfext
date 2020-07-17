@@ -1,0 +1,9 @@
+*.pdf
+*.xml
+*.json
+*.zip
+tmp.txt
+*.ipynb
+*.xsd
+*backup.py
+*__pycache__*
