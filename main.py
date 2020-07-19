@@ -79,9 +79,15 @@ class AllwncExemptUs10(RowStructure):
         )
 
     def get_end(self, pq):
-        return pq(
+        t = pq(
             'LTTextLineHorizontal:contains("Balance"),LTTextLineHorizontal:contains("BALANCE")'
         )
+        if len(t):
+            return t
+        else:
+            return pq(
+                'LTTextLineHorizontal:contains("Total"):contains("salary")'
+            )
 
     def process(self, pq):
         page = pq.parents("LTPage")
@@ -140,13 +146,16 @@ class DeductionUS16(AllwncExemptUs10):
         )
 
     def exist(self, pq):
-        e = self.get_start(pq)
-        if "VI-A" in e.text() or "Chapter" in e.text() or "VIA" in e.text():
-            return False
-        return e
+        es = self.get_start(pq)
+        ee = self.get_end(pq)
+        # print(es.text(), ee.text())
+        if len(es) and len(ee):
+            return (int(es.parents('LTPage').attr.pageid), -float(es.attr.y1)) < (int(ee.parents('LTPage').attr.pageid), -float(ee.attr.y1))
+        return False
 
     def get_end(self, pq):
-        return pq('LTTextLineHorizontal:contains("Aggregate")')
+        # return pq('LTTextLineHorizontal:contains("Aggregate")')
+        return pq('LTTextLineHorizontal:contains("Income")').filter(':contains("Head"),:contains("head")')
     
     def process(self, pq):
         page = pq.parents("LTPage")
@@ -161,7 +170,7 @@ class DeductionUS16(AllwncExemptUs10):
         row_keys.sort(
             key=lambda x: (
                 int(pyquery.PyQuery(x, parent=row_keys).parents("LTPage").attr.pageid),
-                -float(x.get("y1")),
+                -float(x.get("y1")), float(x.get("x0"))
             )
         )
         for row_key in row_keys:
@@ -201,7 +210,7 @@ class DeductionUS16(AllwncExemptUs10):
 
 class DeductionUS16i(SimpleRowStruct):
     def get_start(self, pq):
-        return pq('LTTextLineHorizontal:contains("Standard")')(':contains("16(i)")')
+        return pq('LTTextLineHorizontal:contains("Standard")')(':contains("16(i")')
 
     def get_end(self, pq):
         return pq('LTTextLineHorizontal:contains("Aggregate")')
