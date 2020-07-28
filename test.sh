@@ -1,4 +1,4 @@
-find pdfs -iname "*.pdf" | while read f
+find falsified -iname "*.pdf" | while read f
 do
     python main.py "$f"
 done

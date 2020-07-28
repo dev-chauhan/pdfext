@@ -7,3 +7,4 @@ tmp.txt
 *.xsd
 *backup.py
 *__pycache__*
+*.txt

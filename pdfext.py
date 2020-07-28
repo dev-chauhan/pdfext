@@ -1,6 +1,7 @@
 import pdfquery
 import re
 import pyquery
+from pyquery import PyQuery as d
 
 
 def pq_multiwords(pq, element, list_of_words):
@@ -16,7 +17,13 @@ def pq_multiwords(pq, element, list_of_words):
 
 
 def find_col_header(pq, headerList, is_match=lambda x: True):
-    label = pq_multiwords(pq, "LTTextLineHorizontal", headerList)
+    label = []
+    
+    for header in headerList:
+        label = pq_multiwords(pq, "LTTextLineHorizontal", [header])
+        if len(label):
+            break
+
     if len(label) == 0:
         return None
     page_pq = next(label[0].iterancestors("LTPage"))
@@ -25,13 +32,20 @@ def find_col_header(pq, headerList, is_match=lambda x: True):
     elements = pq(
         'LTPage[pageid="{4}"] LTTextLineHorizontal:overlaps_bbox("{0},{1},{2},{3}")'.format(
             float(label.attr("x0")),
-            float(label.attr("y0")) - 30,
+            float(label.attr("y0")) - 25,
             float(label.attr("x1")),
             float(label.attr("y0")) - 5,
             pageNum,
         )
-    ).filter(is_match)
-    return elements
+    )
+    elements.sort(
+        key=lambda x: (
+            int(pyquery.PyQuery(x, parent=elements).parents("LTPage").attr.pageid),
+            -float(x.get("y1")),
+            float(x.get("x0")),
+        )
+    )
+    return elements.filter(is_match)
 
 
 def find_row_header(pq, headerList, is_match=lambda x: True):
@@ -53,13 +67,15 @@ def find_row_header(pq, headerList, is_match=lambda x: True):
     return elements
 
 
-def column_or_row(pq, word_list, reg=None):
+def column_or_row(
+    pq, word_list, reg=None, match_col=lambda x: True, match_row=lambda x: True
+):
     """
     Find value of field of first matched field name from `word_list` of
     first matched using `find_header`, `find_row_header`, `find_in_same`
     """
-    header_data = find_col_header(pq, word_list)
-    row_data = find_row_header(pq, word_list)
+    header_data = find_col_header(pq, word_list, match_col)
+    row_data = find_row_header(pq, word_list, match_row)
     row_in_data = pq_multiwords(pq, "LTTextLineHorizontal", word_list)
 
     if reg is None:
@@ -275,11 +291,26 @@ class RowStructure:
     def get_pq(self, pq):
         start_pq = self.get_start(pq)
         end_pq = self.get_end(pq)
+        end_pq = end_pq.filter(
+            lambda i, el: (
+                int(d(el, parent=end_pq).parents("LTPage").attr.pageid),
+                -float(el.get("y1")),
+            )
+            > (int(start_pq.parents("LTPage").attr.pageid), -float(start_pq.attr.y1))
+        )
         start_page = start_pq.parents("LTPage")
         end_page = end_pq.parents("LTPage")
-        return pq("LTTextLineHorizontal").filter(
+        res = pq("LTTextLineHorizontal").filter(
             lambda i, e: inRange(e, start_page, start_pq, end_page, end_pq, pq)
         )
+        res.sort(
+            key=lambda x: (
+                int(pyquery.PyQuery(x, parent=res).parents("LTPage").attr.pageid),
+                -float(x.get("y1")),
+                float(x.get("x0")),
+            )
+        )
+        return res
 
     def extract(self, pq):
         self.pq = self.get_pq(pq)
@@ -293,8 +324,24 @@ class RowStructure:
             "children": [child.extract(self.pq) for child in available_children],
         }
 
-class SimpleRowStruct(RowStructure):
+
+class ChildOnlyRow(RowStructure):
     
+    def extract(self, pq):
+        self.pq = self.get_pq(pq)
+        available_children = []
+        for child in self.children:
+            if child.exist(self.pq):
+                available_children.append(child)
+
+        return {
+            self.key: {
+                child.key: child.extract(self.pq)[child.key] for child in available_children
+            }
+        }
+
+
+class SimpleRowStruct(RowStructure):
     def process(self, pq):
         row_pq = get_row(
             pq, int(pq.parents("LTPage").attr("pageid")), (self.get_start(pq))[0]
@@ -305,9 +352,26 @@ class SimpleRowStruct(RowStructure):
             return float(txt)
         except ValueError as err:
             return None
+    
+    def get_end(self, pq):
+        return pq
+
+    def extract(self, pq):
+        self.pq = self.get_pq(pq)
+        available_children = []
+        for child in self.children:
+            if child.exist(self.pq):
+                available_children.append(child)
+
+        if len(self.children) == 0:
+            return {self.key: self.process(self.pq)}
+        return {
+            self.key: self.process(self.pq),
+            "children": [child.extract(self.pq) for child in available_children],
+        }
+
 
 class MultilineRowStruct(RowStructure):
-
     def process(self, pq):
         page = pq.parents("LTPage")
         row_keys = pq.filter(
@@ -317,7 +381,16 @@ class MultilineRowStruct(RowStructure):
         txt_list = []
         y0 = float(page.attr.y0)
         x1 = float(page.attr.x0)
-        row_keys.sort(key=lambda x: (int(pyquery.PyQuery(x, parent=row_keys).parents('LTPage').attr.pageid), float(x.get("y1"))))
+        row_keys.sort(
+            key=lambda x: (
+                int(pyquery.PyQuery(x, parent=row_keys).parents("LTPage").attr.pageid),
+                -float(x.get("y1")),
+                float(x.get("x0")),
+            )
+        )
+
+        if self.key == "17(1)":
+            print(row_keys.text())
         for row_key in row_keys:
             if float(row_key.get("y0")) > y0 and float(row_key.get("x1")) < x1:
                 continue

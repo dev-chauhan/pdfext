@@ -4,7 +4,8 @@ import sys
 from pdfext import *
 import json
 import os
-
+from pyquery import PyQuery as d
+from fields import *
 """
 python main.py <pdf path>
 
@@ -28,207 +29,17 @@ def getCombinedRows(data, matchList, sequential=True):
     return rowList
 
 
-class grossSalary(SimpleRowStruct):
-    def get_start(self, pq):
-        return pq('LTTextLineHorizontal:contains("Gross Salary")')
-
-    def get_end(self, pq):
-        return pq(
-            'LTTextLineHorizontal:contains("Less"):contains("Allowance"):contains("10")'
-        )
+y = 0
 
 
-class grossSalary171(MultilineRowStruct):
-    def get_start(self, pq):
-        return pq('LTTextLineHorizontal:contains("17(1)")')
-
-    def get_end(self, pq):
-        return pq('LTTextLineHorizontal:contains("17(2)")')
-
-
-class grossSalary172(MultilineRowStruct):
-    def get_start(self, pq):
-        return pq('LTTextLineHorizontal:contains("17(2)")')
-
-    def get_end(self, pq):
-        return pq('LTTextLineHorizontal:contains("17(3)")')
-
-
-class grossSalary173(MultilineRowStruct):
-    def get_start(self, pq):
-        return pq('LTTextLineHorizontal:contains("17(3)")')
-
-    def get_end(self, pq):
-        return pq('LTTextLineHorizontal:contains("Total")')
-
-
-class grossSalaryTotal(SimpleRowStruct):
-    def get_start(self, pq):
-        return pq('LTTextLineHorizontal:contains("Total")')
-
-    def get_end(self, pq):
-        return pq(
-            'LTTextLineHorizontal:contains("Less"):contains("Allowance"):contains("10")'
-        )
-
-
-class AllwncExemptUs10(RowStructure):
-    def get_start(self, pq):
-        return pq(
-            'LTTextLineHorizontal:contains("Less"):contains("Allowance"):contains("10")'
-        )
-
-    def get_end(self, pq):
-        t = pq(
-            'LTTextLineHorizontal:contains("Balance"),LTTextLineHorizontal:contains("BALANCE")'
-        )
-        if len(t):
-            return t
-        else:
-            return pq(
-                'LTTextLineHorizontal:contains("Total"):contains("salary")'
-            )
-
-    def process(self, pq):
-        page = pq.parents("LTPage")
-        row_keys = pq.filter(
-            lambda i, el: float(el.get("x0"))
-            < (float(page.attr("x0")) + float(page.attr("x1"))) / 3
-        )
-        txt_dict = {}
-        txt_list = []
-        y0 = float(page.attr.y0)
-        x1 = float(page.attr.x0)
-        row_keys.sort(
-            key=lambda x: (
-                int(pyquery.PyQuery(x, parent=row_keys).parents("LTPage").attr.pageid),
-                -float(x.get("y1")),
-            )
-        )
-        for row_key in row_keys:
-            if float(row_key.get("y0")) > y0 and float(row_key.get("x1")) < x1:
-                continue
-            elif float(row_key.get("y0")) == y0 and float(row_key.get("x1")) > x1:
-                tmpKey = txt_list.pop()
-                txt_dict.pop(tmpKey)
-            row_pq = get_row(pq, int(page.attr("pageid")), row_key)
-            key = pyquery.PyQuery(row_key).text()
-            value = row_pq.text()
-            for v in filter(None, value.split(" ")):
-                value = v
-            value = re.sub("[^0-9\.]+\.*[^0-9\.]*", "", value)
-            try:
-                txt_dict[key] = float(value)
-                txt_list.append(key)
-                y0 = float(row_key.get("y0"))
-                x1 = float(row_key.get("x1"))
-            except ValueError as err:
-                continue
-        return txt_dict
-
-    def extract(self, pq):
-        out = super().extract(pq)
-        children = out.pop("children")
-        assert len(children) == 0
-        return out
-
-
-class DeductionUS16(AllwncExemptUs10):
-    def get_start(self, pq):
-        p1 = pq(
-            'LTTextLineHorizontal:contains("Deduction"),LTTextLineHorizontal:contains("DEDUCTION"),LTTextLineHorizontal:contains("deduction")'
-        )('LTTextLineHorizontal:contains("16")')
-        if len(p1):
-            return p1
-        else:
-            return pq(
-            "LTTextLineHorizontal:contains('Deductions'),LTTextLineHorizontal:contains('DEDUCTIONS')"
-        )
-
-    def exist(self, pq):
-        es = self.get_start(pq)
-        ee = self.get_end(pq)
-        # print(es.text(), ee.text())
-        if len(es) and len(ee):
-            return (int(es.parents('LTPage').attr.pageid), -float(es.attr.y1)) < (int(ee.parents('LTPage').attr.pageid), -float(ee.attr.y1))
+def filterNonName(i, el):
+    global y
+    if re.search("PAN|TAN", d(el).text()) or float(el.get("y1")) <= y:
+        if y == 0:
+            y = float(el.get("y1"))
         return False
+    return True
 
-    def get_end(self, pq):
-        # return pq('LTTextLineHorizontal:contains("Aggregate")')
-        return pq('LTTextLineHorizontal:contains("Income")').filter(':contains("Head"),:contains("head")')
-    
-    def process(self, pq):
-        page = pq.parents("LTPage")
-        row_keys = pq.filter(
-            lambda i, el: float(el.get("x0"))
-            < (float(page.attr("x0")) + float(page.attr("x1"))) / 3 and el.get("y1") not in self.child_ys
-        )
-        txt_dict = {}
-        txt_list = []
-        y0 = float(page.attr.y0)
-        x1 = float(page.attr.x0)
-        row_keys.sort(
-            key=lambda x: (
-                int(pyquery.PyQuery(x, parent=row_keys).parents("LTPage").attr.pageid),
-                -float(x.get("y1")), float(x.get("x0"))
-            )
-        )
-        for row_key in row_keys:
-            if float(row_key.get("y0")) > y0 and float(row_key.get("x1")) < x1:
-                continue
-            elif float(row_key.get("y0")) == y0 and float(row_key.get("x1")) > x1:
-                tmpKey = txt_list.pop()
-                txt_dict.pop(tmpKey)
-            row_pq = get_row(pq, int(page.attr("pageid")), row_key)
-            key = pyquery.PyQuery(row_key).text()
-            value = row_pq.text()
-            for v in filter(None, value.split(" ")):
-                value = v
-            value = re.sub("[^0-9\.]+\.*[^0-9\.]*", "", value)
-            try:
-                txt_dict[key] = float(value)
-                txt_list.append(key)
-                y0 = float(row_key.get("y0"))
-                x1 = float(row_key.get("x1"))
-            except ValueError as err:
-                continue
-        return txt_dict
-    
-    def extract(self, pq):
-        self.pq = self.get_pq(pq)
-        available_children = []
-        ext = {}
-        self.child_ys = []
-        for child in self.children:
-            if child.exist(self.pq):
-                child_ext = child.extract(self.pq)
-                ext[child.key] = child_ext[child.key]
-                self.child_ys.append(child.get_start(self.pq).attr.y1)
-        return {
-            self.key: {**self.process(self.pq), **ext}
-        }
-
-class DeductionUS16i(SimpleRowStruct):
-    def get_start(self, pq):
-        return pq('LTTextLineHorizontal:contains("Standard")')(':contains("16(i")')
-
-    def get_end(self, pq):
-        return pq('LTTextLineHorizontal:contains("Aggregate")')
-
-
-class DeductionUS16ii(SimpleRowStruct):
-    def get_start(self, pq):
-        return pq('LTTextLineHorizontal:contains("Entertainment")')('LTTextLineHorizontal:contains("allowance"),LTTextLineHorizontal:contains("Allowance")')
-
-    def get_end(self, pq):
-        return pq('LTTextLineHorizontal:contains("Aggregate")')
-
-class DeductionUS16iii(SimpleRowStruct):
-    def get_start(self, pq):
-        return pq('LTTextLineHorizontal:contains("Tax")')(':contains("employment"),:contains("Employment")')
-
-    def get_end(self, pq):
-        return pq('LTTextLineHorizontal:contains("Aggregate")')
 
 if __name__ == "__main__":
 
@@ -236,6 +47,7 @@ if __name__ == "__main__":
     pdf = pdfquery.PDFQuery(pdfname)  # PDFQuery object
     pdf.load()  # creates xml tree from given pdf using elements identified by pdfminer library in pdf
     print(pdfname)
+    os.makedirs("extracted", exist_ok=True)
     data = {
         "NameOfEmployer": column_or_row(
             pdf.pq,  # PyQuery object on which we can query for elements similar to jQuery syntax
@@ -245,6 +57,16 @@ if __name__ == "__main__":
                 "Deductor Name",
             ],  # list of possible keywords below or along which we want to find the value
             "[A-Za-z ]{9}[A-Za-z ]*",  # regex matching the value we want, default is any pattern (e.g. "*")
+            match_col=filterNonName,
+        )
+    }
+    y = 0
+    data = {
+        **data,
+        "NameOfEmployee": column_or_row(
+            pdf.pq,
+            ["Name and Rank of the Employee", "Employee", "employee",],
+            match_col=filterNonName,
         ),
         "PANOfDeductor": column_or_row(
             pdf.pq, ["PAN of the Deductor"], "[A-Z]{5}[0-9]{4}[A-Z]{1}"
@@ -269,6 +91,49 @@ if __name__ == "__main__":
         ),
     }
 
+    try:
+        data["TDSOnSalary"] = float(data["TDSOnSalary"])
+    except ValueError as e:
+        data["TDSOnSalary"] = 0.0
+
+    if re.search("PAO.*OR.*", data["NameOfEmployer"]) or len(sys.argv) > 2:
+        pao_ors_part_b = {
+            **data,
+            **PartB("partb", children=[
+                grossSalary(
+                    "form_16_pao_or_gross_salary",
+                    children=[
+                        grossSalary171("17(1)"),
+                        grossSalary172("17(2)"),
+                        grossSalary173("17(3)"),
+                        grossSalaryTotal("Total"),
+                    ],
+                ),
+                PAOORAllwncExemptUs10("form_16_pao_or_total_exemptions_under_section_10"),
+                DeductionUS16i("form_16_pao_or_standard_deductions_under_section_16_ia"),
+                PAOORBalance("form_16_pao_or_balance"),
+                PAOORDeductions("Deductions", children=[
+                    InterestUS24("form_16_pao_or_other_deductions_interest_payable_on_loan_under_section_24"),
+                    Aggregate("form_16_pao_or_other_deductions_aggregate")
+                ]),
+                OtherIncome("form_16_pao_or_other_income_reported_by_employee"),
+                TaxDeductedPartB("form_16_pao_or_tds_amount")
+            ]).extract(pdf.pq)
+        }
+        x = pao_ors_part_b["partb"].pop("Deductions")
+        pao_ors_part_b["partb"] = {**pao_ors_part_b["partb"], **x}
+        pao_ors_part_b["form_16_pao_or_employer_name"] = pao_ors_part_b.pop("NameOfEmployer")
+        pao_ors_part_b["form_16_pao_or_employer_tan"] = pao_ors_part_b.pop("TANOfDeductor")
+        pao_ors_part_b["form_16_pao_or_employee_name"] = " ".join(pao_ors_part_b.pop("NameOfEmployee").split(" ")[2:])
+        pao_ors_part_b["form_16_pao_or_employee_pan"] = pao_ors_part_b.pop("PANOfEmployee")
+        pao_ors_part_b["form_16_pao_or_assessment_year"] = pao_ors_part_b.pop("AssessmentYear")
+        pao_ors_part_b.pop("TDSOnSalary")
+        with open(
+            "extracted/{0}.json".format(pdfname.split("/")[-1].split(".")[0]), "w"
+        ) as f:
+            json.dump(pao_ors_part_b, f, indent=4)
+        exit()
+
     gross_salary = grossSalary(
         "GrossSalary",
         children=[
@@ -280,29 +145,37 @@ if __name__ == "__main__":
     )
 
     allwnc_exempt_us_10 = AllwncExemptUs10("AllwncExemptUs10")
-    deduction_us_16 = DeductionUS16("DeductionUS16",  children=[
-        DeductionUS16i("16(i)"),
-        DeductionUS16ii("16(ii)"),
-        DeductionUS16iii("16(iii)")
-    ])
+    deduction_us_16 = DeductionUS16(
+        "DeductionUS16",
+        children=[
+            DeductionUS16i("16(i)"),
+            DeductionUS16ii("16(ii)"),
+            DeductionUS16iii("16(iii)"),
+        ],
+    )
 
     if gross_salary.exist(pdf.pq):
         data["GrossSalary"] = gross_salary.extract(pdf.pq)
 
     if allwnc_exempt_us_10.exist(pdf.pq):
         data = {**data, **allwnc_exempt_us_10.extract(pdf.pq)}
-    
+
     if deduction_us_16.exist(pdf.pq):
         data = {**data, **deduction_us_16.extract(pdf.pq)}
     else:
         for child in deduction_us_16.children:
             if child.exist(pdf.pq):
                 if deduction_us_16.key in data:
-                    data[deduction_us_16.key] = {**data[deduction_us_16.key], child.key: child.extract(pdf.pq)[child.key]}
+                    data[deduction_us_16.key] = {
+                        **data[deduction_us_16.key],
+                        child.key: child.extract(pdf.pq)[child.key],
+                    }
                 else:
-                    data[deduction_us_16.key] = {child.key: child.extract(pdf.pq)[child.key]}
+                    data[deduction_us_16.key] = {
+                        child.key: child.extract(pdf.pq)[child.key]
+                    }
     # write data into json file
-    os.makedirs("extracted", exist_ok=True)
+    
     with open(
         "extracted/{0}.json".format(pdfname.split("/")[-1].split(".")[0]), "w"
     ) as f:
