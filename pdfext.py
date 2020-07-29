@@ -389,8 +389,6 @@ class MultilineRowStruct(RowStructure):
             )
         )
 
-        if self.key == "17(1)":
-            print(row_keys.text())
         for row_key in row_keys:
             if float(row_key.get("y0")) > y0 and float(row_key.get("x1")) < x1:
                 continue

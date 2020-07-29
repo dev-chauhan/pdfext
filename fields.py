@@ -187,7 +187,7 @@ class DeductionUS16(AllwncExemptUs10):
 
 class DeductionUS16i(SimpleRowStruct):
     def get_start(self, pq):
-        return pq('LTTextLineHorizontal:contains("Standard")')(':contains("16(i")')
+        return pq('LTTextLineHorizontal:contains("Standard")')(':contains("16(i"),:contains("Deduction"),:contains("deduction")')
 
     def get_end(self, pq):
         return pq('LTTextLineHorizontal:contains("Aggregate")')
@@ -251,8 +251,6 @@ class PAOORDeductions(ChildOnlyRow):
         res = pq("LTTextLineHorizontal").filter(
             lambda i, e: inRange(e, start_page, s, end_page, ed, pq)
         )
-        print(self.key)
-        print(res.text())
         return res
 
     def get_start(self, pq):
@@ -267,7 +265,6 @@ class PAOORDeductions(ChildOnlyRow):
         return x
 
     def process(self, pq):
-        print("p", pq.text(), "p")
         page = pq.parents("LTPage")
         row_keys = pq.filter(
             lambda i, el: float(el.get("x0"))
@@ -285,7 +282,6 @@ class PAOORDeductions(ChildOnlyRow):
                 float(x.get("x0")),
             )
         )
-        print(row_keys.text())
         for row_key in row_keys:
             if float(row_key.get("y0")) > y0 and float(row_key.get("x1")) < x1:
                 continue
@@ -309,19 +305,7 @@ class PAOORDeductions(ChildOnlyRow):
             except ValueError as err:
                 continue
         return other_val
-    # def extract(self, pq):
-    #     self.pq = self.get_pq(pq)
-    #     available_children = []
-    #     for child in self.children:
-    #         if child.exist(self.pq):
-    #             available_children.append(child)
 
-    #     return {
-    #         self.key: {
-    #             child.key: child.extract(self.pq) for child in available_children
-    #         }
-    #     }
-    
     def extract(self, pq):
         x = super().extract(pq)
         return {**x, "form_16_pao_or_other_deductions_others": self.process(self.pq)}

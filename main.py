@@ -12,23 +12,6 @@ python main.py <pdf path>
 extracted data will be stored in extracted directory
 """
 
-
-def getCombinedRows(data, matchList, sequential=True):
-    if not sequential:
-        raise NotImplementedError
-    matchIdx = 0
-    rowList = []
-    for key in data:
-        if matchIdx >= len(matchList):
-            break
-        if matchList[matchIdx](key):
-            rowList.append([key])
-            matchIdx += 1
-        elif matchIdx != 0:
-            rowList[-1].append(key)
-    return rowList
-
-
 y = 0
 
 
@@ -56,7 +39,6 @@ if __name__ == "__main__":
                 "Name and Address of the Employer",
                 "Deductor Name",
             ],  # list of possible keywords below or along which we want to find the value
-            "[A-Za-z ]{9}[A-Za-z ]*",  # regex matching the value we want, default is any pattern (e.g. "*")
             match_col=filterNonName,
         )
     }
@@ -97,6 +79,8 @@ if __name__ == "__main__":
         data["TDSOnSalary"] = 0.0
 
     if re.search("PAO.*OR.*", data["NameOfEmployer"]) or len(sys.argv) > 2:
+        # len(sys.argv) > 2 is for determining from command line argument if given input is of PAO(OR) form or not
+        # so that we can test on falsified name too (because falsified name does not have PAO OR in name) 
         pao_ors_part_b = {
             **data,
             **PartB("partb", children=[
