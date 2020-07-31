@@ -28,11 +28,11 @@ def find_col_header(pq, headerList, is_match=lambda x: True):
         return None
     page_pq = next(label[0].iterancestors("LTPage"))
     pageNum = int(page_pq.layout.pageid)
-
+    
     elements = pq(
         'LTPage[pageid="{4}"] LTTextLineHorizontal:overlaps_bbox("{0},{1},{2},{3}")'.format(
             float(label.attr("x0")),
-            float(label.attr("y0")) - 25,
+            float(label.attr("y0")) - 38,
             float(label.attr("x1")),
             float(label.attr("y0")) - 5,
             pageNum,
@@ -78,8 +78,10 @@ def column_or_row(
     row_data = find_row_header(pq, word_list, match_row)
     row_in_data = pq_multiwords(pq, "LTTextLineHorizontal", word_list)
 
-    if reg is None:
+    if reg is None and header_data is not None:
         return header_data.text()
+    elif reg is None:
+        return ""
     try:
         word1 = re.search(reg, header_data.text())
     except AttributeError:
